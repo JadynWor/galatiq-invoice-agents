@@ -1,6 +1,7 @@
 import json
 import csv
 import xml.etree.ElementTree as ET
+import pdfplumber
 from pathlib import Path
 from models.invoice import InvoiceData, LineItem
 
@@ -104,7 +105,6 @@ def _parse_csv_columnar(reader):
         if len(row) < 7:
             continue
         
-        # If first column is empty, it's a summary row
         if not row[0].strip():
             label = row[6].strip().lower() if row[6].strip() else ""
             value = float(row[7].strip()) if len(row) > 7 and row[7].strip() else None
@@ -116,7 +116,6 @@ def _parse_csv_columnar(reader):
                 total = value
             continue
         
-        # Data row
         invoice_number = row[0].strip()
         vendor = row[1].strip()
         date = row[2].strip()
@@ -183,8 +182,8 @@ def parse_invoice(file_path):
     elif ext == ".xml":
         return parse_xml(file_path)
     elif ext == ".txt":
-        return None  # LLM-based extraction HERE
+        return None
     elif ext == ".pdf":
-        return None  # pdfplumber + LLM extraction HERE
+        return None
     else:
         raise ValueError(f"Unsupported file format: {ext}")

@@ -9,15 +9,26 @@ def ingest_node(state):
     """Extract structured data from an invoice file."""
     file_path = state["invoice_path"]
 
-    # Step 1: Read the raw file content
-    try:
-        with open(file_path, "r") as f:
-            raw_content = f.read()
-    except Exception as e:
-        return {"error": f"Failed to read file: {str(e)}", "logs": [f"ERROR: Failed to read {file_path}"]}
+    # Step 1: Read the raw file content (handle PDF binary separately)
+    ext = Path(file_path).suffix.lower()
+
+    if ext == ".pdf":
+        import pdfplumber
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                raw_content = ""
+                for page in pdf.pages:
+                    raw_content += page.extract_text() or ""
+        except Exception as e:
+            return {"error": f"Failed to read PDF: {str(e)}", "logs": [f"ERROR: Failed to read {file_path}"]}
+    else:
+        try:
+            with open(file_path, "r") as f:
+                raw_content = f.read()
+        except Exception as e:
+            return {"error": f"Failed to read file: {str(e)}", "logs": [f"ERROR: Failed to read {file_path}"]}
 
     # Step 2: Try the deterministic parser first (json, csv, xml)
-    ext = Path(file_path).suffix.lower()
     invoice = parse_invoice(file_path)
     if invoice:
         return {

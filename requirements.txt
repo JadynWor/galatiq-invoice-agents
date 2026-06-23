@@ -19,8 +19,10 @@ annotated-types==0.7.0
 anyio==4.14.0
 builtin-interfaces==2.0.3
 certifi==2026.6.17
+cffi==2.0.0
 charset-normalizer==3.4.7
 composition-interfaces==2.0.3
+cryptography==49.0.0
 cv-bridge==4.1.0
 demo-nodes-py==0.33.7
 diagnostic-msgs==5.3.6
@@ -71,10 +73,15 @@ ormsgpack==1.12.2
 osrf-pycommon==2.1.7
 packaging==26.2
 pcl-msgs==1.0.0
+pdfminer.six==20260107
+pdfplumber==0.11.10
 pendulum-msgs==0.33.7
+pillow==12.2.0
+pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4
 Pygments==2.20.0
+pypdfium2==5.10.1
 python-dotenv==1.2.2
 python-qt-binding==2.2.2
 PyYAML==6.0.3
