@@ -78,5 +78,3 @@ python -m streamlit run ui/app.py
 Python 3.12, LangGraph, OpenAI (gpt-4o-mini), Pydantic, SQLite, pdfplumber, Rich, Streamlit
 
 The OpenAI client is configured so swapping to Grok is a one-line base_url change.
-
-## Project structure
