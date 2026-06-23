@@ -76,7 +76,7 @@ def validate_node(state):
             ))
         elif not vendor_result["trusted"]:
             flags.append(ValidationFlag(
-                severity="high",
+                severity="critical",
                 field="vendor",
                 message=f"Vendor {vendor_name} is untrusted",
                 code="UNTRUSTED_VENDOR"
