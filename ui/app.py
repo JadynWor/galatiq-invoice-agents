@@ -5,11 +5,17 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agents.graph import build_graph
 from setup_db import init_database
+
+
+@st.cache_resource
+def get_graph():
+    """Build graph once and cache it."""
+    init_database()
+    return build_graph()
 
 
 def process_invoice(graph, file_path):
@@ -31,69 +37,69 @@ def process_invoice(graph, file_path):
 
 
 def render_result(result):
-    """Display pipeline results with expanding sections."""
+    """Display pipeline results."""
     invoice = result.get("invoice") or {}
     validation = result.get("validation") or {}
     approval = result.get("approval") or {}
     payment = result.get("payment") or {}
-    logs = result.get("logs", [])
 
     inv_num = invoice.get("invoice_number", "N/A")
     vendor = invoice.get("vendor", "N/A")
     total = invoice.get("total", 0) or 0
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Invoice", inv_num)
-    col2.metric("Total", f"${total:,.2f}")
-
     val_passed = validation.get("passed", False)
-    col3.metric("Validation", "PASSED" if val_passed else "FAILED")
-
     app_status = approval.get("status", "N/A").upper()
-    col4.metric("Decision", app_status)
 
-    st.divider()
+    # Metrics row
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Invoice", inv_num)
+    c2.metric("Total", f"${total:,.2f}")
+    c3.metric("Validation", "✅ PASS" if val_passed else "❌ FAIL")
+    c4.metric("Decision", app_status)
 
-    with st.expander("1. Ingestion", expanded=True):
-        st.write(f"**Vendor:** {vendor}")
-        st.write(f"**Invoice #:** {inv_num}")
-        st.write(f"**Date:** {invoice.get('date', 'N/A')}")
-        st.write(f"**Due Date:** {invoice.get('due_date', 'N/A')}")
-        st.write(f"**Currency:** {invoice.get('currency', 'USD')}")
+    # Ingestion
+    with st.expander("📥 1. Ingestion — Data Extraction", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Vendor:** {vendor}")
+            st.write(f"**Invoice #:** {inv_num}")
+            st.write(f"**Date:** {invoice.get('date', 'N/A')}")
+        with col2:
+            st.write(f"**Due Date:** {invoice.get('due_date', 'N/A')}")
+            st.write(f"**Currency:** {invoice.get('currency', 'USD')}")
+            st.write(f"**Payment Terms:** {invoice.get('payment_terms', 'N/A')}")
 
         items = invoice.get("line_items", [])
         if items:
-            st.write("**Line Items:**")
+            st.markdown("**Line Items:**")
+            item_data = []
             for item in items:
-                st.write(f"  - {item.get('item')}: qty {item.get('quantity')} × ${item.get('unit_price', 0):.2f}")
+                item_data.append({
+                    "Item": item.get("item"),
+                    "Qty": item.get("quantity"),
+                    "Unit Price": f"${item.get('unit_price', 0):.2f}",
+                })
+            st.table(item_data)
 
-        st.write(f"**Total:** ${total:,.2f}")
-
-    with st.expander("2. Validation", expanded=True):
+    # Validation
+    with st.expander("🔍 2. Validation — Database Checks", expanded=False):
         flags = validation.get("flags", [])
         if val_passed:
-            st.success(f"Validation passed ({len(flags)} flags)")
+            st.success(f"All checks passed ({len(flags)} flags)")
         else:
-            st.error(f"Validation failed ({len(flags)} flags)")
+            st.error(f"Validation failed — {len(flags)} issue(s) found")
 
         for flag in flags:
-            severity = flag.get("severity", "info")
-            msg = f"**[{flag.get('code')}]** {flag.get('message')}"
-            if severity == "critical":
+            sev = flag.get("severity")
+            msg = f"**{flag.get('code')}** — {flag.get('message')}"
+            if sev == "critical":
                 st.error(msg)
-            elif severity == "warning":
+            elif sev == "warning":
                 st.warning(msg)
             else:
                 st.info(msg)
 
-        inv_checks = validation.get("inventory_checks", {})
-        if inv_checks:
-            st.write("**Inventory Checks:**")
-            for item_name, check in inv_checks.items():
-                status = "✅" if check.get("sufficient") else "❌"
-                st.write(f"  {status} {item_name}: {check.get('requested', 0)} requested / {check.get('stock', 0)} in stock")
-
-    with st.expander("3. Approval", expanded=True):
+    # Approval
+    with st.expander("✅ 3. Approval — VP Review", expanded=False):
         if app_status == "APPROVED":
             st.success(f"Decision: {app_status}")
         elif app_status == "REJECTED":
@@ -108,61 +114,65 @@ def render_result(result):
 
         reflection = approval.get("reflection")
         if reflection:
-            st.write(f"**Critic Reflection:** {reflection}")
+            st.info(f"**Critic Reflection:** {reflection}")
 
-    with st.expander("4. Payment", expanded=True):
+    # Payment
+    with st.expander("💳 4. Payment — Processing", expanded=False):
         if payment.get("success"):
-            st.success(f"Payment processed: {payment.get('message')}")
-            st.write(f"**Transaction ID:** `{payment.get('transaction_id')}`")
+            st.success(f"{payment.get('message')}")
+            st.code(f"Transaction ID: {payment.get('transaction_id')}")
         else:
-            st.warning(f"Payment skipped: {payment.get('message', 'Invoice not approved')}")
+            st.warning(payment.get("message", "Payment skipped — invoice not approved"))
 
-    with st.expander("Pipeline Logs", expanded=False):
-        for log in logs:
-            st.code(log)
+    # Logs
+    with st.expander("📋 Pipeline Logs", expanded=False):
+        for log in result.get("logs", []):
+            st.text(log)
 
 
 def main():
     st.set_page_config(page_title="Invoice Processing Agent", page_icon="🧾", layout="wide")
     st.title("🧾 Invoice Processing Agent")
-    st.caption("Multi-agent system for automated invoice processing")
+    st.caption("Multi-agent system for automated invoice processing | LangGraph + OpenAI")
 
-    init_database()
-    graph = build_graph()
-
-    st.sidebar.header("Process Invoices")
+    graph = get_graph()
 
     mode = st.sidebar.radio("Mode", ["Single Invoice", "Batch Processing"])
 
     if mode == "Single Invoice":
+        st.sidebar.markdown("---")
         invoice_dir = Path("data/invoices")
-        if invoice_dir.exists():
-            files = sorted([f.name for f in invoice_dir.iterdir()
-                          if f.suffix in [".json", ".csv", ".xml", ".txt", ".pdf"]])
-            selected = st.sidebar.selectbox("Select test invoice", files)
-            file_path = str(invoice_dir / selected)
-        else:
-            file_path = st.sidebar.text_input("Invoice file path")
+        files = sorted([f.name for f in invoice_dir.iterdir()
+                       if f.suffix in [".json", ".csv", ".xml", ".txt", ".pdf"]])
+        selected = st.sidebar.selectbox("Select invoice", files)
 
-        uploaded = st.sidebar.file_uploader("Or upload an invoice", type=["json", "csv", "xml", "txt", "pdf"])
+        uploaded = st.sidebar.file_uploader("Or upload", type=["json", "csv", "xml", "txt", "pdf"])
+
         if uploaded:
             save_path = f"/tmp/{uploaded.name}"
             with open(save_path, "wb") as f:
                 f.write(uploaded.getbuffer())
             file_path = save_path
+        else:
+            file_path = str(invoice_dir / selected)
 
-        if st.sidebar.button("Process Invoice", type="primary"):
-            with st.spinner("Processing invoice..."):
+        if st.sidebar.button("🚀 Process Invoice", type="primary", use_container_width=True):
+            with st.status("Processing invoice...", expanded=True) as status:
+                st.write("📥 Running ingestion agent...")
                 result = process_invoice(graph, file_path)
+                st.write("🔍 Validation complete")
+                st.write("✅ Approval decision made")
+                status.update(label="Processing complete!", state="complete")
             render_result(result)
 
     else:
-        invoice_dir = Path("data/invoices")
-        if st.sidebar.button("Process All Invoices", type="primary"):
+        st.sidebar.markdown("---")
+        if st.sidebar.button("🚀 Process All Invoices", type="primary", use_container_width=True):
+            invoice_dir = Path("data/invoices")
             files = sorted([f for f in invoice_dir.iterdir()
                           if f.suffix in [".json", ".csv", ".xml", ".txt", ".pdf"]])
 
-            progress = st.progress(0, text="Processing invoices...")
+            progress = st.progress(0, text="Starting batch processing...")
             results = []
 
             for i, f in enumerate(files):
@@ -172,24 +182,38 @@ def main():
 
             progress.empty()
 
+            # Summary
             approved = sum(1 for r in results if (r.get("approval") or {}).get("status") == "approved")
             rejected = sum(1 for r in results if (r.get("approval") or {}).get("status") == "rejected")
             escalated = sum(1 for r in results if (r.get("approval") or {}).get("status") == "escalated")
-            total_spend = sum((r.get("invoice") or {}).get("total", 0) or 0 for r in results
-                            if (r.get("approval") or {}).get("status") == "approved")
+            total_approved = sum(
+                (r.get("invoice") or {}).get("total", 0) or 0 for r in results
+                if (r.get("approval") or {}).get("status") == "approved"
+            )
+            total_rejected = sum(
+                (r.get("invoice") or {}).get("total", 0) or 0 for r in results
+                if (r.get("approval") or {}).get("status") != "approved"
+            )
 
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Approved", approved)
-            col2.metric("Rejected", rejected)
-            col3.metric("Escalated", escalated)
-            col4.metric("Approved Spend", f"${total_spend:,.2f}")
+            st.subheader("Batch Summary")
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Total Invoices", len(results))
+            c2.metric("Approved", approved)
+            c3.metric("Rejected", rejected)
+            c4.metric("Escalated", escalated)
+            c5.metric("Approved Spend", f"${total_approved:,.2f}")
 
             st.divider()
 
-            for i, result in enumerate(results):
+            for result in results:
                 inv = result.get("invoice") or {}
-                inv_num = inv.get("invoice_number", f"Invoice {i+1}")
-                with st.expander(f"{inv_num} — {inv.get('vendor', 'N/A')} — ${(inv.get('total', 0) or 0):,.2f}"):
+                app = result.get("approval") or {}
+                inv_num = inv.get("invoice_number", "N/A")
+                status = app.get("status", "N/A").upper()
+                total = inv.get("total", 0) or 0
+                icon = "✅" if status == "APPROVED" else "❌" if status == "REJECTED" else "⚠️"
+
+                with st.expander(f"{icon} {inv_num} — {inv.get('vendor', 'N/A')} — ${total:,.2f} — {status}"):
                     render_result(result)
 
 
